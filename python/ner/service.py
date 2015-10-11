@@ -27,7 +27,7 @@ def get_tweet_tags():
         print e
 
     res.update({'status': status})
-    return flask.jsonify({'res': res})
+    return flask.jsonify(res)
 
 if __name__ == "__main__":
     app.register_blueprint(bp, url_prefix=api_endpoint['base_url'])
