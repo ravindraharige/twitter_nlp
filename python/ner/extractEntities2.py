@@ -55,6 +55,7 @@ start_time = time.time()
 
 """ set the flags here before starting the service """
 
+only_entities = True
 options_pos = False
 options_chunk = False
 options_event = False
@@ -62,21 +63,25 @@ options_tagger = False
 options_classify = False
 
 if options_pos:
+    only_entities = False
     posTagger = pos_tagger_stdin.PosTagger()
 else:
     posTagger = None
 
 if options_chunk and options_pos:
+    only_entities = False
     chunkTagger = chunk_tagger_stdin.ChunkTagger()
 else:
     chunkTagger = None
 
 if options_event and options_pos:
+    only_entities = False
     eventTagger = event_tagger_stdin.EventTagger()
 else:
     eventTagger = None
 
 if options_classify:
+    only_entities = False
     llda = GetLLda()
 else:
     llda = None
@@ -236,8 +241,10 @@ def tag_tweets(tweets):
 
         ttweet = (" ".join(output) + "\n").encode('utf8')
         record.update({'tagged_tweet': ttweet})
-        entities = get_entities(ttweet)
-        record.update({'entitites': entities})
+
+        if only_entities:
+            entities = get_entities(ttweet)
+            record.update({'entitites': entities})
         tagged_tweets.append(record)
 
         #seems like there is a memory leak comming from mallet, so just restart it every 1,000 tweets or so
