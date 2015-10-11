@@ -1,8 +1,6 @@
 Twitter NLP Named Entity Recognition HTTP Service
 ====================
-Added a simple http api to get NER tagged tweets. These changes were made mainly to make use of Twitter NER in non-python based projects.
-
-Forked from https://github.com/aritter/twitter_nlp.
+Added a simple HTTP API to get NER tagged tweets using @ritter's twitter_nlp library (https://github.com/aritter/twitter_nlp)
 
 Example Usage:
 --------------
