@@ -26,7 +26,7 @@ def get_tweet_tags():
     except Exception, e:
         print e
 
-    res.update({'status': str(status)})
+    res.update({'status': status})
     return flask.jsonify({'res': res})
 
 if __name__ == "__main__":
