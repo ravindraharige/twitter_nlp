@@ -53,36 +53,37 @@ def GetLLda():
 
 start_time = time.time()
 
-parser = OptionParser()
-parser.add_option("--chunk", action="store_true", default=False)
-parser.add_option("--pos", action="store_true", default=False)
-parser.add_option("--event", action="store_true", default=False)
-parser.add_option("--classify", action="store_true", default=False)
-(options, args) = parser.parse_args()
+""" set the flags here before starting the service """
 
-if options.pos:
+options_pos = False
+options_chunk = False
+options_event = False
+options_tagger = False
+options_classify = False
+
+if options_pos:
     posTagger = pos_tagger_stdin.PosTagger()
 else:
     posTagger = None
 
-if options.chunk and options.pos:
+if options_chunk and options_pos:
     chunkTagger = chunk_tagger_stdin.ChunkTagger()
 else:
     chunkTagger = None
 
-if options.event and options.pos:
+if options_event and options_pos:
     eventTagger = event_tagger_stdin.EventTagger()
 else:
     eventTagger = None
 
-if options.classify:
+if options_classify:
     llda = GetLLda()
 else:
     llda = None
 
-if options.pos and options.chunk:
+if options_pos and options_chunk:
     ner_model = 'ner.model'
-elif options.pos:
+elif options_pos:
     ner_model = 'ner_nochunk.model'
 else:
     ner_model = 'ner_nopos_nochunk.model'
@@ -120,123 +121,138 @@ for line in open('%s/hbc/data/dict-label3' % (BASE_DIR)):
     (dictionary, label) = line.rstrip('\n').split(' ')
     dict2label[dictionary] = label
 
-nLines = 1
-tweet = sys.stdin.readline().strip()
-line = tweet.encode('utf-8')
-while line:
-    words = twokenize.tokenize(line)
-    seq_features = []
-    tags = []
+def get_entities(ttweet):
+    toks = ttweet.split()
+    ntoks = [(k.split('/')[0],k.split('/')[1]) for k in toks]
+    result = []
+    entities = []
+    for tok in ntoks:
+        k, v = tok
+        if v.endswith('ENTITY'):
+            entities.append(k)
+        elif len(entities) > 0:
+            result.append(' '.join(entities))
+            entities = []
 
-    goodCap = capClassifier.Classify(words) > 0.9
+    if len(entities) > 0:
+        result.append(' '.join(entities))
+    return result
 
-    if posTagger:
-        pos = posTagger.TagSentence(words)
-        #pos = [p.split(':')[0] for p in pos]  # remove weights   
-        pos = [re.sub(r':[^:]*$', '', p) for p in pos]  # remove weights   
-    else:
-        pos = None
+def tag_tweets(tweets):
+    global ner
+    tweets_count = 1
+    tagged_tweets = []
+    for line in tweets:
+        record = dict()
+        record.update({'tweet_text': line})
+        words = twokenize.tokenize(line)
+        seq_features = []
+        tags = []
 
-    # Chunking the tweet
-    if posTagger and chunkTagger:
-        word_pos = zip(words, [p.split(':')[0] for p in pos])
-        chunk = chunkTagger.TagSentence(word_pos)
-        chunk = [c.split(':')[0] for c in chunk]  # remove weights      
-    else:
-        chunk = None
+        goodCap = capClassifier.Classify(words) > 0.9
 
-    #Event tags
-    if posTagger and eventTagger:
-        events = eventTagger.TagSentence(words, [p.split(':')[0] for p in pos])
-        events = [e.split(':')[0] for e in events]
-    else:
-        events = None
-
-    quotes = Features.GetQuotes(words)
-    for i in range(len(words)):
-        features = fe.Extract(words, pos, chunk, i, goodCap) + ['DOMAIN=Twitter']
-        if quotes[i]:
-            features.append("QUOTED")
-        seq_features.append(" ".join(features))
-    ner.stdin.write(("\t".join(seq_features) + "\n").encode('utf8'))
-        
-    for i in range(len(words)):
-        tags.append(ner.stdout.readline().rstrip('\n').strip(' '))
-
-    features = LdaFeatures(words, tags)
-
-    #Extract and classify entities
-    for i in range(len(features.entities)):
-        type = None
-        wids = [str(vocab.GetID(x.lower())) for x in features.features[i] if vocab.HasWord(x.lower())]
-        if llda and len(wids) > 0:
-            entityid = "-1"
-            if entityMap.has_key(features.entityStrings[i].lower()):
-                entityid = str(entityMap[features.entityStrings[i].lower()])
-            labels = dictionaries.GetDictVector(features.entityStrings[i])
-
-            if sum(labels) == 0:
-                labels = [1 for x in labels]
-            llda.stdin.write("\t".join([entityid, " ".join(wids), " ".join([str(x) for x in labels])]) + "\n")
-            sample = llda.stdout.readline().rstrip('\n')
-            labels = [dict2label[dictMap[int(x)]] for x in sample[4:len(sample)-8].split(' ')]
-
-            count = {}
-            for label in labels:
-                count[label] = count.get(label, 0.0) + 1.0
-            maxL = None
-            maxP = 0.0
-            for label in count.keys():
-                p = count[label] / float(len(count))
-                if p > maxP or maxL == None:
-                    maxL = label
-                    maxP = p
-
-            if maxL != 'None':
-                tags[features.entities[i][0]] = "B-%s" % (maxL)
-                for j in range(features.entities[i][0]+1,features.entities[i][1]):
-                    tags[j] = "I-%s" % (maxL)
-            else:
-                tags[features.entities[i][0]] = "O"
-                for j in range(features.entities[i][0]+1,features.entities[i][1]):
-                    tags[j] = "O"
+        if posTagger:
+            pos = posTagger.TagSentence(words)
+            #pos = [p.split(':')[0] for p in pos]  # remove weights
+            pos = [re.sub(r':[^:]*$', '', p) for p in pos]  # remove weights
         else:
-            tags[features.entities[i][0]] = "B-ENTITY"
-            for j in range(features.entities[i][0]+1,features.entities[i][1]):
-                tags[j] = "I-ENTITY"
+            pos = None
 
-    output = ["%s/%s" % (words[x], tags[x]) for x in range(len(words))]
-    if pos:
-        output = ["%s/%s" % (output[x], pos[x]) for x in range(len(output))]
-    if chunk:
-        output = ["%s/%s" % (output[x], chunk[x]) for x in range(len(output))]
-    if events:
-        output = ["%s/%s" % (output[x], events[x]) for x in range(len(output))]
-    sys.stdout.write((" ".join(output) + "\n").encode('utf8'))
+        # Chunking the tweet
+        if posTagger and chunkTagger:
+            word_pos = zip(words, [p.split(':')[0] for p in pos])
+            chunk = chunkTagger.TagSentence(word_pos)
+            chunk = [c.split(':')[0] for c in chunk]  # remove weights
+        else:
+            chunk = None
 
-#    if pos:
-#        sys.stdout.write((" ".join(["%s/%s/%s" % (words[x], tags[x], pos[x]) for x in range(len(words))]) + "\n").encode('utf8'))
-#    else:
-#        sys.stdout.write((" ".join(["%s/%s" % (words[x], tags[x]) for x in range(len(words))]) + "\n").encode('utf8'))        
-    
-    sys.stdout.flush()
+        #Event tags
+        if posTagger and eventTagger:
+            events = eventTagger.TagSentence(words, [p.split(':')[0] for p in pos])
+            events = [e.split(':')[0] for e in events]
+        else:
+            events = None
 
-    #seems like there is a memory leak comming from mallet, so just restart it every 1,000 tweets or so
-    if nLines % 1000 == 0:
-        start = time.time()
-        ner.stdin.close()
-        ner.stdout.close()
-        #if ner.wait() != 0:
-        #sys.stderr.write("error!\n")
-        #ner.kill()
-        os.kill(ner.pid, SIGTERM)       #Need to do this for python 2.4
-        ner.wait()
-        ner = GetNer(ner_model)
-    nLines += 1
-    
-    line = sys.stdin.readline().strip()
-    line = line.encode('utf-8')
+        quotes = Features.GetQuotes(words)
+        for i in range(len(words)):
+            features = fe.Extract(words, pos, chunk, i, goodCap) + ['DOMAIN=Twitter']
+            if quotes[i]:
+                features.append("QUOTED")
+            seq_features.append(" ".join(features))
+        ner.stdin.write(("\t".join(seq_features) + "\n").encode('utf8'))
 
-end_time = time.time()
+        for i in range(len(words)):
+            tags.append(ner.stdout.readline().rstrip('\n').strip(' '))
 
-print "Average time per tweet = %ss" % (str((end_time-start_time) / nLines))
+        features = LdaFeatures(words, tags)
+
+        #Extract and classify entities
+        for i in range(len(features.entities)):
+            type = None
+            wids = [str(vocab.GetID(x.lower())) for x in features.features[i] if vocab.HasWord(x.lower())]
+            if llda and len(wids) > 0:
+                entityid = "-1"
+                if entityMap.has_key(features.entityStrings[i].lower()):
+                    entityid = str(entityMap[features.entityStrings[i].lower()])
+                labels = dictionaries.GetDictVector(features.entityStrings[i])
+
+                if sum(labels) == 0:
+                    labels = [1 for x in labels]
+                llda.stdin.write("\t".join([entityid, " ".join(wids), " ".join([str(x) for x in labels])]) + "\n")
+                sample = llda.stdout.readline().rstrip('\n')
+                labels = [dict2label[dictMap[int(x)]] for x in sample[4:len(sample)-8].split(' ')]
+
+                count = {}
+                for label in labels:
+                    count[label] = count.get(label, 0.0) + 1.0
+                maxL = None
+                maxP = 0.0
+                for label in count.keys():
+                    p = count[label] / float(len(count))
+                    if p > maxP or maxL == None:
+                        maxL = label
+                        maxP = p
+
+                if maxL != 'None':
+                    tags[features.entities[i][0]] = "B-%s" % (maxL)
+                    for j in range(features.entities[i][0]+1,features.entities[i][1]):
+                        tags[j] = "I-%s" % (maxL)
+                else:
+                    tags[features.entities[i][0]] = "O"
+                    for j in range(features.entities[i][0]+1,features.entities[i][1]):
+                        tags[j] = "O"
+            else:
+                tags[features.entities[i][0]] = "B-ENTITY"
+                for j in range(features.entities[i][0]+1,features.entities[i][1]):
+                    tags[j] = "I-ENTITY"
+
+        output = ["%s/%s" % (words[x], tags[x]) for x in range(len(words))]
+        if pos:
+            output = ["%s/%s" % (output[x], pos[x]) for x in range(len(output))]
+        if chunk:
+            output = ["%s/%s" % (output[x], chunk[x]) for x in range(len(output))]
+        if events:
+            output = ["%s/%s" % (output[x], events[x]) for x in range(len(output))]
+
+        ttweet = (" ".join(output) + "\n").encode('utf8')
+        record.update({'tagged_tweet': ttweet})
+        entities = get_entities(ttweet)
+        record.append({'entitites': entities})
+        tagged_tweets.append(record)
+
+        #seems like there is a memory leak comming from mallet, so just restart it every 1,000 tweets or so
+        if tweets_count % 1000 == 0:
+            start = time.time()
+            ner.stdin.close()
+            ner.stdout.close()
+            #if ner.wait() != 0:
+            #sys.stderr.write("error!\n")
+            #ner.kill()
+            os.kill(ner.pid, SIGTERM)       #Need to do this for python 2.4
+            ner.wait()
+            ner = GetNer(ner_model)
+        tweets_count += 1
+
+    end_time = time.time()
+    print "Average time per tweet = %ss" % (str((end_time-start_time) / tweets_count))
+    return tagged_tweets
