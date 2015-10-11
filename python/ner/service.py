@@ -16,12 +16,11 @@ app = Flask(__name__)
 
 @bp.route('/get_tags', methods=['GET', 'POST', 'OPTIONS'])
 def get_tweet_tags():
-    data = request.args.get('data')
+    tweets = request.args.getlist('tweets')
     status = 0
     res = dict()
     try:
-        js = json.loads(data)
-        res.update({"result": tag_tweets(js.get('tweets'))})
+        res.update({"result": tag_tweets(tweets)})
         status = 1
     except Exception, e:
         print e
