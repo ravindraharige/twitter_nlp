@@ -14,8 +14,8 @@ Note: this takes a minute or so to read in models from files. The api endpoint s
 
 Example function on how to invoke the service.
 
-	   def get_tagged_tweets(tweets):
-    		data = {'tweets': tweets}
+	   def get_tagged_tweets(list_of_tweets):
+    		data = {'tweets': list_of_tweets}
     		headers = {'content-type': 'application/json'}
     		url = "http://localhost:9011/twitner/api/get_tags"
     		resp = requests.get(url, params=data, headers=headers)
