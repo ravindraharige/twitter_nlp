@@ -12,14 +12,17 @@ Example Usage:
 
 Note: this takes a minute or so to read in models from files. The api endpoint settings like hostname, port number, application name, etc. can be configured in service.py file itself. To include classification, pos, chunk feature - there are boolean flags in extractEntities2.py module, please change the values accordingly and run the service.py.
 
-	payload = {'tweets': list_of_tweet_texts_to_be_tagged}
-	just use this paylod variable as value of API's 'data' argument.
+Example function on how to invoke the service.
+
+	   def get_tagged_tweets(tweets):
+    		data = {'tweets': tweets}
+    		headers = {'content-type': 'application/json'}
+    		url = "http://localhost:9011/twitner/api/get_tags"
+    		resp = requests.get(url, params=data, headers=headers)
+    		js_resp = json.loads(resp.text).get('result')
+    		return js_resp
 
 
-Output of the API is in JSON format. 
-
-	{'status': 0}  -- in case of API call failure, please cheack back again.
-	{'status': 1, result: [{entities: [], tagged_tweet: '', tweet_text: ''}]  
-	--- in case of API call success, returns status code 1 where entities is empty array if no NER specific texts found, 		otherwise contains named entitied that are found in tweets in payload
+Output of the API is in JSON format.
 
 
