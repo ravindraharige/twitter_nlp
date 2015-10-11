@@ -237,7 +237,7 @@ def tag_tweets(tweets):
         ttweet = (" ".join(output) + "\n").encode('utf8')
         record.update({'tagged_tweet': ttweet})
         entities = get_entities(ttweet)
-        record.append({'entitites': entities})
+        record.update({'entitites': entities})
         tagged_tweets.append(record)
 
         #seems like there is a memory leak comming from mallet, so just restart it every 1,000 tweets or so
